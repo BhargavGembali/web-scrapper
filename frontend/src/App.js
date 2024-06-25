@@ -48,6 +48,7 @@ function App() {
     <div className="container">
       <ToastContainer />
       <h1 className='title'>Web Scraper</h1>
+      
       <div className="input-container">
         <input
           className="url-input"
@@ -84,17 +85,17 @@ function App() {
               ></path>
             </svg>
           </div>
-          <span>{loading ? 'Scraping...' : 'Scrape'}</span>
+          <span>{loading ? 'Scraping' : 'Scrape'}</span>
         </button>
-        <button
-          className='download-button'
-          onClick={handleDownload}
-          disabled={!data || loading}
-        >
-          Download
-        </button>
+          <button
+            className='download-button'
+            onClick={handleDownload}
+            disabled={!data}
+          >
+            Download
+          </button>
       </div>
-      {data && (
+      {data &&!loading && (
         <div className="result-container">
           <h2 className="result-title">Scraped Data</h2>
           <pre className="result-json">{JSON.stringify(data, null, 2)}</pre>

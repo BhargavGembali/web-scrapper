@@ -1,25 +1,14 @@
-/* src/App.css */
-.url-input {
-  border: none;
-  outline: none;
-  border-radius: 15px;
-  padding: 1em;
-  background-color: #ccc;
-  box-shadow: inset 2px 5px 10px rgba(0,0,0,0.3);
-  transition: 300ms ease-in-out;
+/* App.css */
+
+body {
+  background-color: #333;
 }
 
-.url-input:focus {
-  background-color: white;
-  transform: scale(1.05);
-  box-shadow: 13px 13px 100px #969696,
-             -13px -13px 100px #ffffff;
-}
 .container {
-  max-width: 700px;
-  margin: 50px auto;
+  max-width: 800px;
+  margin: 5% auto;
   padding: 20px;
-  background-color: #f0f0f0;
+  background-color: #2a2b38;
   border-radius: 8px;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   font-family: Arial, sans-serif;
@@ -27,7 +16,11 @@
 
 .title {
   text-align: center;
-  color: #333;
+  color: #ffffff;
+  font-family: "Nunito", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 100px;
+  font-style: 30px;
 }
 
 .input-container {
@@ -38,37 +31,47 @@
 
 .url-input {
   flex: 1;
-  padding: 10px;
+  padding: 1em;
   font-size: 16px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  margin-right: 10px;
+  border: none;
+  border-radius: 15px;
+  background-color: #ccc;
+  box-shadow: inset 2px 5px 10px rgba(0, 0, 0, 0.3);
+  transition: 300ms ease-in-out;
+  width: 70%;
+  margin-right: 1%;
 }
+
+.url-input:focus {
+  background-color: white;
+}
+
 .action-select {
   padding: 10px;
-  font-size: 16px;
-  border:none;
-  border-radius: 6px;
-  appearance: none;
-  background-color: royalblue ;
+  font-size: 20px;
+  border: none;
+  border-radius: 10px;
+  background-color: royalblue;
   padding-right: 30px;
-  margin-right: 10px; 
+  margin-right: 10px;
   color: #fff;
   cursor: pointer;
   font-family: inherit;
-  font-size: 20px;
+  background-size: 16px;
 }
 
 .action-select option {
+  background-color: royalblue;
+  color: white;
   border: none;
-  background-color: royalblue; /* Royal blue background on hover */
-  color: white; /* White text color on hover */
 }
 
-.action-select option:hover {
+.action-select:focus {
   border: none;
-  background-color: white; /* White background for options */
-  color: #ffffff; 
+}
+
+.action-select:active {
+  border: none;
 }
 
 .result-container {
@@ -77,6 +80,8 @@
   background-color: #fff;
   border: 1px solid #ccc;
   border-radius: 4px;
+  max-height: 400px; /* Add max-height for scrolling */
+  overflow: auto; /* Add overflow auto for scrolling */
 }
 
 .result-title {
@@ -85,27 +90,30 @@
 }
 
 .result-json {
-  white-space: pre-wrap;
+  white-space: pre-wrap; /* Wrap the text */
+  word-wrap: break-word; /* Break long words */
   font-size: 14px;
   color: #666;
 }
 
-
-.button {
+.button, .download-button {
   font-family: inherit;
   font-size: 20px;
   background: royalblue;
   color: white;
   padding: 0.4em 1em;
-  padding-left: 0.9em;
   display: flex;
   align-items: center;
   border: none;
-  border-radius: 5px;
+  border-radius: 10px;
   overflow: hidden;
   transition: all 0.2s;
   cursor: pointer;
   padding-right: 20px;
+}
+
+.button {
+  margin-right: 10px;
 }
 
 .button span {
@@ -125,41 +133,24 @@
 }
 
 .button:hover svg {
-  transform: translateX(1.2em) rotate(45deg) scale(1.1);
-}
-
-.button:hover span {
-  transform: translateX(5em);
-}
-
-.button:active{
-  display: none;
-}
-
-.download-button{
-  font-family: inherit;
-  font-size: 20px;
-  background: royalblue;
-  color: white;
-  padding: 0.4em 1em;
-  padding-left: 0.9em;
-  display: flex;
-  align-items: center;
-  border: none;
-  border-radius: 5px;
-  overflow: hidden;
-  transition: all 0.2s;
-  cursor: pointer;
-  margin-left: 10px;
-  padding-right: 20px;
+  transform: rotate(45deg) scale(1.1);
 }
 
 @keyframes fly-1 {
   from {
     transform: translateY(0.1em);
   }
-
   to {
     transform: translateY(-0.1em);
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .input-container {
+    display: flex;
+    flex-direction: column;
+  }
+  .button, .download-button, .action-select, .url-input {
+    margin: 10px 0;
   }
 }
