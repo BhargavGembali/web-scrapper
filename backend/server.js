@@ -2,7 +2,9 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const puppeteer = require('puppeteer');
-const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+const fs = require('fs');
+const path = require('path');
+const { parse } = require('json2csv');
 
 const app = express();
 const port = 5000;
@@ -12,9 +14,24 @@ app.use(bodyParser.json());
 
 let scrapedData = [];
 let isScrapingInProgress = false;
+let nextButtonSelector = null;
+
+const selectorsFilePath = path.join(__dirname, 'nextButtonSelectors.json');
+
+function readSelectors() {
+  if (fs.existsSync(selectorsFilePath)) {
+    const data = fs.readFileSync(selectorsFilePath);
+    return JSON.parse(data).selectors;
+  }
+  return [];
+}
+
+function writeSelectors(selectors) {
+  fs.writeFileSync(selectorsFilePath, JSON.stringify({ selectors }, null, 2));
+}
 
 app.post('/scrape', async (req, res) => {
-  const { url, action } = req.body;
+  const { url, action, nextButton } = req.body;
 
   if (!url) {
     return res.status(400).send('URL is required.');
@@ -25,37 +42,33 @@ app.post('/scrape', async (req, res) => {
   }
 
   isScrapingInProgress = true;
+  nextButtonSelector = nextButton || null;
 
   try {
     const browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
     const page = await browser.newPage();
 
-    let navigationAttempts = 3; // Number of retry attempts for navigation
-
-    while (navigationAttempts > 0) {
-      try {
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 }); // Increased timeout to 60 seconds
-        break;
-      } catch (error) {
-        navigationAttempts--;
-        console.error(`Attempt ${3 - navigationAttempts} failed:`, error);
-        if (navigationAttempts === 0) {
-          throw error;
-        }
-      }
-    }
+    await navigateToPage(page, url);
 
     let tempScrapedData = [];
+    let nextButtonFound = true;
 
     switch (action) {
       case 'scroll':
         tempScrapedData = await autoScrollAndCollect(page);
         break;
       case 'pagination':
-        tempScrapedData = await handlePagination(page);
+        const paginationResult = await handlePagination(page);
+        tempScrapedData = paginationResult.results;
+        nextButtonFound = paginationResult.nextButtonFound;
+        if (!nextButtonFound && nextButton) {
+          const selectors = readSelectors();
+          selectors.push(nextButton);
+          writeSelectors(selectors);
+        }
         break;
       default:
         tempScrapedData = await scrapeSimple(page);
@@ -65,10 +78,9 @@ app.post('/scrape', async (req, res) => {
     await browser.close();
 
     scrapedData = tempScrapedData;
-
     isScrapingInProgress = false;
-    res.json({ message: 'Scraping completed.', data: scrapedData });
 
+    res.json({ message: 'Scraping completed.', data: scrapedData, nextButtonFound });
   } catch (error) {
     console.error('Error:', error);
     isScrapingInProgress = false;
@@ -76,50 +88,56 @@ app.post('/scrape', async (req, res) => {
   }
 });
 
-app.get('/download', async (req, res) => {
-  try {
-    if (scrapedData.length === 0) {
-      return res.status(404).send('No data available to download.');
-    }
-
-    const csvWriter = createCsvWriter({
-      path: 'scraped_data.csv',
-      header: Object.keys(scrapedData[0]).map(key => ({ id: key, title: key }))
-    });
-
-    await csvWriter.writeRecords(scrapedData);
-
-    res.download('scraped_data.csv', 'scraped_data.csv', (err) => {
-      if (err) {
-        res.status(500).send('Error downloading the file.');
-      }
-    });
-
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).send('Error generating CSV file.');
+app.get('/download/json', async (req, res) => {
+  if (scrapedData.length === 0) {
+    return res.status(404).send('No data available to download.');
   }
+
+  const jsonFilePath = 'scraped_data.json';
+  fs.writeFileSync(jsonFilePath, JSON.stringify(scrapedData, null, 2));
+  res.download(jsonFilePath, 'scraped_data.json');
 });
 
+app.get('/download/csv', async (req, res) => {
+  if (scrapedData.length === 0) {
+    return res.status(404).send('No data available to download.');
+  }
+
+  const csvFilePath = 'scraped_data.csv';
+  const csv = parse(scrapedData);
+  fs.writeFileSync(csvFilePath, csv);
+  res.download(csvFilePath, 'scraped_data.csv');
+});
+
+async function navigateToPage(page, url) {
+  let navigationAttempts = 3;
+
+  while (navigationAttempts > 0) {
+    try {
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+      break;
+    } catch (error) {
+      navigationAttempts--;
+      console.error(`Attempt ${3 - navigationAttempts} failed:`, error);
+      if (navigationAttempts === 0) {
+        throw error;
+      }
+    }
+  }
+}
+
 async function scrapeSimple(page) {
-  return await page.evaluate(() => {
+  return page.evaluate(() => {
     function getElementData(el) {
       return {
         tag: el.tagName.toLowerCase(),
         text: el.textContent.trim(),
-        href: el.href || ''
+        href: el.href || '',
       };
     }
 
     function getAllElements() {
-      const elements = [];
-      const nodes = document.querySelectorAll('a, h1, h2, h3, h4, p, div');
-
-      nodes.forEach(node => {
-        elements.push(getElementData(node));
-      });
-
-      return elements;
+      return Array.from(document.querySelectorAll('a, h1, h2, h3, h4, p, div, ul, li, span')).map(getElementData);
     }
 
     return getAllElements();
@@ -132,28 +150,28 @@ async function autoScroll(page) {
     let totalHeight = 0;
     while (totalHeight < document.body.scrollHeight) {
       window.scrollBy(0, distance);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       totalHeight += distance;
     }
   });
 }
 
 async function autoScrollAndCollect(page) {
-  return await page.evaluate(async () => {
+  return page.evaluate(async () => {
     const distance = 100;
     let totalHeight = 0;
     const data = [];
 
     while (totalHeight < document.body.scrollHeight) {
       window.scrollBy(0, distance);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
       totalHeight += distance;
 
-      document.querySelectorAll('a, h1, h2, h3, h4, p, div').forEach(link => {
+      document.querySelectorAll('a, h1, h2, h3, h4, p, div, ul, li, span').forEach((link) => {
         data.push({
           tag: link.tagName.toLowerCase(),
           text: link.textContent.trim(),
-          href: link.href || ''
+          href: link.href || '',
         });
       });
     }
@@ -164,79 +182,75 @@ async function autoScrollAndCollect(page) {
 
 async function handlePagination(page) {
   let results = [];
-  let currentPage = 1;
+  let nextButtonFound = true;
 
   while (true) {
-    const pageData = await page.evaluate(() => {
-      function getElementData(el) {
-        return {
-          tag: el.tagName.toLowerCase(),
-          text: el.textContent.trim(),
-          href: el.href || ''
-        };
-      }
-
-      function getAllElements() {
-        const elements = [];
-        const nodes = document.querySelectorAll('a, h1, h2, h3, h4, p, div');
-
-        nodes.forEach(node => {
-          elements.push(getElementData(node));
-        });
-
-        return elements;
-      }
-
-      return getAllElements();
-    });
-
+    const pageData = await scrapeSimple(page);
     results = results.concat(pageData);
 
-    const nextButtonClicked = await page.evaluate(() => {
-      const nextButton = Array.from(document.querySelectorAll('a, button')).find(el => {
-        return el.getAttribute('aria-label') && el.getAttribute('aria-label').toLowerCase().includes('go to');
-      });
-      if (nextButton) {
-        nextButton.scrollIntoView();
-        nextButton.click();
-        return true;
-      }
-      return false;
-    });
+    const nextButtonClicked = await clickNextButton(page);
+    if (!nextButtonClicked) {
+      nextButtonFound = false;
+      break;
+    }
 
-    if (nextButtonClicked) {
-      try {
-        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }); // Increase timeout to 60 seconds
-      } catch (e) {
-        console.error('Navigation timeout:', e);
-        break;
-      }
-    } else {
-      const paginationLinksClicked = await page.evaluate((currentPage) => {
-        const paginationLinks = Array.from(document.querySelectorAll('a')).filter(link => link.textContent.trim() == currentPage.toString());
-        if (paginationLinks.length > 0) {
-          paginationLinks[0].scrollIntoView();
-          paginationLinks[0].click();
-          return true;
-        }
-        return false;
-      }, currentPage + 1);
-
-      if (paginationLinksClicked) {
-        try {
-          await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 }); // Increase timeout to 60 seconds
-          currentPage += 1;
-        } catch (e) {
-          console.error('Navigation timeout:', e);
-          break;
-        }
-      } else {
-        break;
-      }
+    try {
+      await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 });
+    } catch (e) {
+      console.error('Navigation timeout:', e);
+      break;
     }
   }
 
-  return results;
+  return { results, nextButtonFound };
+}
+
+async function clickNextButton(page) {
+  const selectors = readSelectors();
+
+  return page.evaluate((userSelector, selectors) => {
+    let nextButton;
+
+    // Function to check if an element's aria-label, text content, or label contains the user-provided text
+    function containsUserText(el, userText) {
+      const ariaLabel = el.getAttribute('aria-label') || '';
+      const textContent = el.textContent || '';
+      const label = el.getAttribute('label') || '';
+      const userTextLower = userText.trim().toLowerCase();
+      return (
+        ariaLabel.trim().toLowerCase().includes(userTextLower) ||
+        textContent.trim().toLowerCase().includes(userTextLower) ||
+        label.trim().toLowerCase().includes(userTextLower)
+      );
+    }
+
+    // Check user-provided selector first
+    if (userSelector) {
+      nextButton = document.querySelector(userSelector);
+    }
+
+    // Check selectors from the file if user selector did not match
+    if (!nextButton) {
+      for (let selector of selectors) {
+        nextButton = document.querySelector(selector);
+        if (nextButton) break;
+      }
+    }
+
+    // Generic search for elements that might be the next button
+    if (!nextButton) {
+      const userText = userSelector || 'next'; // Use 'next' as a default if userSelector is not provided
+      nextButton = Array.from(document.querySelectorAll('a, button')).find((el) => containsUserText(el, userText));
+    }
+
+    if (nextButton) {
+      nextButton.scrollIntoView();
+      nextButton.click();
+      return true;
+    }
+
+    return false;
+  }, nextButtonSelector, selectors);
 }
 
 app.listen(port, () => {
