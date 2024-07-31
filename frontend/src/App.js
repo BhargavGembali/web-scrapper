@@ -19,7 +19,7 @@ function App() {
     setLoading(true);
     setIsScraping(true);
     try {
-      const response = await axios.post('http://localhost:5000/scrape', { url, action, nextButton });
+      const response = await axios.post('https://web-scrapper-backend-orcin.vercel.app/scrape', { url, action, nextButton });
       setData(response.data.data);
       if (response.data.nextButtonFound === false) {
         setShowNextButtonInput(true);
@@ -41,7 +41,7 @@ function App() {
 
   const handleDownload = async () => {
     try {
-      const response = await axios.get(`http://localhost:5000/download/${downloadFormat}`, {
+      const response = await axios.get(`https://web-scrapper-backend-orcin.vercel.app/download/${downloadFormat}`, {
         responseType: 'blob',
       });
 
